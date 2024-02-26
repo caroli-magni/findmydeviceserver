@@ -1,0 +1,14 @@
+# Local objectbox data
+data/
+
+# Objectbox
+*.mdb
+
+# FMD Server config
+config.json
+config.yaml
+config.yml
+
+# binaries
+fmdserver
+fmdDBViewer

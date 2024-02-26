@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>FMD</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="cache-control" content="no-cache, must-revalidate, post-check=0, pre-check=0" />
+    <meta http-equiv="cache-control" content="max-age=0" />
+    <meta http-equiv="expires" content="0" />
+    <link rel="stylesheet" href="./style.css">
+
+<body>
+
+    <div class="center">
+        <h2>FMD Server</h2>
+    </div>
+
+    <div class="center">
+        <h2>Privacy Notice</h2>
+    </div>
+
+    <h3>What data is stored when visiting the website?</h3>
+    <p>To establish a connection your IP address is transmitted, but not saved. While using the website the private key
+        and the user-id will be saved temporarily in your browser, but will be removed when leaving the page.</p>
+
+    <h3>What data is stored on the server?</h3>
+    <p>The server stores the plaintext random user id and your password hash. It also stores all encrypted data uploaded by
+        your phone: location, date, any pictures, battery level, the public key, and the encrypted private key.</p>
+
+    <h3>Is my data transferred/sold/etc?</h3>
+    <p>Your data is only used to provide the functionality of finding your device. It is not given to other parties.</p>
+
+    <h3>Is my data encrypted?</h3>
+    <p>Yes, except the user id all data is encrypted. But you need to keep your password safe!</p>
+
+    <h3>How exactly does the encryption work?</h3>
+    <p>
+        Your device creates an RSA-3072 keypair during registration. The private key is encrypted symmetrically with
+        AES-GCM-256 with the Argon2 hash of your password as a key. Then the keypair is uploaded to the server.
+        <br>
+        Every time your device sends data it uses the public key to encrypt this data and uploads the encrypted data to
+        the server.
+        <br>
+        When you access the web page and enter your user id and password, the web page derives a different Argon2 hash
+        from your password and sends it to the server. This proves to the server that you know the password without
+        actually sending it to the server.
+        The web page then downloads the keypair from the server and decrypts the RSA private key.
+        It can then download any other data, such as the location, and locally decrypt it in your browser.
+    </p>
+
+    <h3>Who has access to the data?</h3>
+    <p>Only the server operator has access to the database. But all important data is encrypted anyway.</p>
+
+    <h3>How can I delete my data from the server?</h3>
+    <p>Log in with the FMD app and click "Delete data".</p>
+
+</body>
+
+</html>
