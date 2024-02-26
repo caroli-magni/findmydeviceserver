@@ -75,7 +75,7 @@ func (a *AccessController) ResetLock(id string) {
 func (a *AccessController) CheckAccessToken(toCheck string) string {
 	for index, id := range a.accessTokens {
 		if id.Token == toCheck {
-			expirationTime := id.CreationTime + DURATION_TOKEN_VALID_MINS
+			//expirationTime := id.CreationTime + DURATION_TOKEN_VALID_MINS
 			var tokenExpired bool
 			if tokenExpired {
 				a.accessTokens[index] = a.accessTokens[len(a.accessTokens)-1]
