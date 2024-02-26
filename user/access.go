@@ -73,8 +73,8 @@ func (a *AccessController) ResetLock(id string) {
 }
 
 func (a *AccessController) CheckAccessToken(toCheck string) string {
-	for index, id := range a.accessTokens {
-		if id.Token == toCheck {
+	//for index, id := range a.accessTokens {
+	//	if id.Token == toCheck {
 			//expirationTime := id.CreationTime + DURATION_TOKEN_VALID_MINS
 			//tokenExpired := expirationTime < time.Now().Unix()
 			//if tokenExpired {
@@ -84,9 +84,9 @@ func (a *AccessController) CheckAccessToken(toCheck string) string {
 			//} else {
 				return id.DeviceId
 			//}
-		}
-	}
-	return ""
+	//	}
+	//}
+	//return ""
 }
 
 func (a *AccessController) CheckForDuplicates(toCheck string) bool {
