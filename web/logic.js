@@ -1,7 +1,8 @@
 var map, markers;
 
-var newestLocationDataIndex;
+var newestLocationDataIndex = 0;
 var currentLocationDataIndx = 0;
+var requestedIndex = 0;
 var currentId;
 var globalPrivateKey;
 var globalAccessToken = "";
@@ -13,6 +14,28 @@ const KEYCODE_ENTER = 13;
 const KEYCODE_ARROW_LEFT = 37;
 const KEYCODE_ARROW_RIGHT = 39;
 
+var forceLatest = 1;
+var forcePollingRateValue = 20000;
+//var getGps = setInterval(function() {sendToPhone("locate gps");}, forcePollingRateValue);
+
+var writeGlobalAccessToken = setInterval(function() {}, 1000);
+
+function disableForcePolling(){
+    clearInterval(getGps);
+}
+
+function applyForcePollingRate(){
+    forcePollingRateValue=document.getElementById("forcePollingRate").value*1000;
+    var toasted = new Toasted({
+    position: 'top-center',
+    duration: 2000
+    });
+    if(document.getElementById("forcePolling").checked){
+        toasted.show("".concat(forcePollingRateValue/1000, "s Polling rate applied!"));
+    }else{
+        toasted.show("".concat(forcePollingRateValue/1000, "s Polling rate applied! Remember to enable!"));
+    }
+}
 
 window.addEventListener("load", (event) => init());
 
@@ -59,14 +82,15 @@ function init() {
             versionView.innerHTML = versionCode;
         })
 
-    if (getWelcomeCookie() == "") {
-        welcomePrompt = document.getElementById('welcomePrompt');
-        welcomePrompt.style.visibility = 'visible';
-    }
+    //if (getWelcomeCookie() == "") {
+    //    welcomePrompt = document.getElementById('welcomePrompt');
+    //    welcomePrompt.style.visibility = 'visible';
+    //}
 
     setupOnClicks()
     checkWebCryptoApiAvailable()
 }
+
 
 function setupOnClicks() {
     document.getElementById("welcomeConfirm").addEventListener("click", () => welcomeFinish());
@@ -77,8 +101,74 @@ function setupOnClicks() {
     });
 
     document.getElementById("locateButton").addEventListener("click", async () => await prepareForLogin());
-    document.getElementById("locateOlder").addEventListener("click", async () => await locateOlder());
-    document.getElementById("locateNewer").addEventListener("click", async () => await locateNewer());
+    document.getElementById("locateOlder").addEventListener("click", function() {
+        if(!document.getElementById('forceLatest').checked){
+            locateOlder();
+        }else{
+            var toasted = new Toasted({
+                position: 'top-center',
+                duration: 2000
+        });
+        toasted.show("Disable Force Latest Position to scrub through history!");
+        }
+    });
+    document.getElementById("locateNewer").addEventListener("click", function() {
+        if(!document.getElementById('forceLatest').checked){
+            locateNewer();
+        }
+        else{
+                var toasted = new Toasted({
+                position: 'top-center',
+                duration: 2000
+        });
+        toasted.show("Force Latest Position is already on, timetraveller!");
+        }
+    });
+    var forcePollingCheckbox = document.querySelector("input[name=forcePolling]");
+    forcePollingCheckbox.addEventListener('change', function() {
+    if (this.checked) {
+        var getGps = setInterval(function() {sendToPhone("locate gps");}, forcePollingRateValue);
+        var toasted = new Toasted({
+            position: 'top-center',
+            duration: 2000
+        });
+        document.getElementById("forcePollingRate").value = forcePollingRateValue/1000;
+        toasted.show("".concat("Force polling every ",forcePollingRateValue/1000, "s enabled!"));
+    } else {
+        clearInterval(getGps);
+        var toasted = new Toasted({
+            position: 'top-center',
+            duration: 2000
+        });
+        toasted.show('Force polling disabled!');
+
+      }
+    });
+    document.getElementById("forcePollingRate").value = forcePollingRateValue/1000;
+
+    var getLatest = setInterval(function() {currentLocationDataIndx=newestLocationDataIndex;locate(currentLocationDataIndx);}, 200);
+
+    var forceLatestCheckbox = document.querySelector("input[name=forceLatest]");
+    forceLatestCheckbox.addEventListener('change', function() {
+    if (this.checked) {
+        getLatest = setInterval(function() {currentLocationDataIndx=newestLocationDataIndex;locate(currentLocationDataIndx);}, 200);
+        var toasted = new Toasted({
+            position: 'top-center',
+            duration: 2000
+        });
+        toasted.show('Force latest position enabled!');
+    } else {
+        clearInterval(getLatest);
+        var toasted = new Toasted({
+            position: 'top-center',
+            duration: 2000
+        });
+        toasted.show('Force latest position disabled!');
+      }
+    });
+
+    document.getElementById("applyForcePollingRateForm").addEventListener("submit", function(e) {applyForcePollingRate();e.preventDefault();});
+
     document.getElementById("locate").addEventListener("click", () => showLocateDropDown());
     document.getElementById("locateAll").addEventListener("click", () => sendToPhone("locate"));
     document.getElementById("locateGps").addEventListener("click", () => sendToPhone("locate gps"));
@@ -129,25 +219,37 @@ async function prepareForLogin() {
         centedInnerDiv.className = "center";
         div.appendChild(centedInnerDiv);
 
+        loginForm=document.createElement('FORM');
+        loginForm.name='login_form';
+        div.appendChild(loginForm);
+
+
         var input = document.createElement("input");
         input.id = "password_prompt_input";
         input.type = "password";
-        centedInnerDiv.appendChild(input);
+        loginForm.appendChild(input);
 
         div.appendChild(document.createElement("br"));
         div.appendChild(document.createElement("br"));
 
         document.body.appendChild(div);
 
-        input.focus();
-        input.addEventListener("keyup", function (e) {
-            if (event.keyCode == KEYCODE_ENTER) {
-                if (input.value != "") {
+        var button = document.createElement("button");
+        button.id = "password_prompt_submit";
+        button.type = "submit";
+        loginForm.appendChild(button);
+        //form.addEventListener("submit", logSubmit);
+
+        //input.focus();
+        loginForm.addEventListener("submit", function (e) {
+        //    if (event.keyCode == KEYCODE_ENTER) {
+        //        if (input.value != "") {
                     document.body.removeChild(div);
                     doLogin(idInput.value, input.value);
-                }
-            }
-        }, false);
+        //        }
+        //    }
+        e.preventDefault();
+        });
 
     } else {
         await locate(-1);
@@ -283,7 +385,6 @@ async function locate(requestedIndex) {
             position: 'top-center',
             duration: 3000
         })
-        toasted.show('No newer locations');
         return
     }
 
@@ -310,6 +411,7 @@ async function locate(requestedIndex) {
     if (!response.ok) {
         throw response.status;
     }
+
     const locationData = await response.json();
     var loc;
     try {
@@ -325,7 +427,7 @@ async function locate(requestedIndex) {
     document.getElementById("idView").innerHTML = currentId;
     document.getElementById("dateView").innerHTML = time.toLocaleDateString();
     document.getElementById("timeView").innerHTML = time.toLocaleTimeString();
-    document.getElementById("providerView").innerHTML = loc.provider;
+    document.getElementById("providerView").innerHTML = globalAccessToken;
     document.getElementById("batView").innerHTML = loc.bat + " %";
 
     const target = L.latLng(loc.lat, loc.lon);
@@ -381,7 +483,9 @@ function sendToPhone(message) {
         console.log("Missing accessToken!");
         return;
     }
-
+    //if(document.getElementById("forcePolling").checked){
+    //    clearInterval(getGps);
+    //}
     fetch("./command", {
         method: 'POST',
         body: JSON.stringify({
@@ -396,7 +500,7 @@ function sendToPhone(message) {
             position: 'top-center',
             duration: 2000
         })
-        toasted.show('Command send!')
+        toasted.show('Polling GPS...');
     })
 }
 

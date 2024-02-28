@@ -17,10 +17,9 @@
 
     <script src="./node_modules/toastedjs/dist/toasted.min.js"></script>
     <link rel="stylesheet" href="./node_modules/toastedjs/dist/toasted.min.css">
-
     <!--TODO: Remove these when removing the legacy crypto code -->
     <script src="./crypto-js/crypto-js.js"></script>
-    <script src="./jsencrypt/jsencrypt.min.js"></script>
+
 
     <script src="./locate.js"></script>
     <script src="./logic.js"></script>
@@ -28,19 +27,17 @@
     <script src="./picture.js"></script>
     <script src="./node_modules/argon2-browser/lib/argon2.js"></script>
 
-<body>
+<body onbeforeunload="return disableForcePolling()">
 
     <div id="head">
         <div class="center">
             <h2>Find My Device</h2>
         </div>
-        <br>
         <div id="login">
             <div class="center">
                 <p>This server tracks all your registered devices.<br>Please enter the device-id to receive the latest
                     location:</p>
             </div>
-            <br>
             <div class="center">
                 <input type="text" id="fmdid" name="fmdid" autocomplete="fmdid">
                 <br><br>
@@ -50,11 +47,9 @@
             </div>
         </div>
     </div>
-
     <div id="dataView">
         <div id="map"></div>
     </div>
-
     <footer>
         <div>
             <div class="deviceInfo" id="desktop">
@@ -79,6 +74,16 @@
                             <button type="button" class="imageButton" title="Next Location" id="locateNewer">
                                 <img src="assets/Right.png" height="24" />
                             </button>
+                            <input type="checkbox" id="forceLatest" name="forceLatest" value="forceLatest" checked>
+                                <label for="forcePolling">Force Latest Position</label>
+                            </button>
+                            <input type="checkbox" id="forcePolling" name="forcePolling" value="forcePolling">
+                                <label for="forcePolling">Force Polling</label>
+                            <form id="applyForcePollingRateForm">
+                                <label>Rate (10s-600s): <input type="number" id="forcePollingRate" name="forcePollingRate" min="10" max="600" maxlength="4" size="4">
+                                <label/>
+                                <button type="submit" title="Apply Force Polling Rate" id="applyForcePollingRate">Apply</button>
+                            </form>
                         </div>
 
                         <div>
@@ -152,7 +157,8 @@
                             <p id="dateView">Date</p>
                             <p id="timeView">Time</p>
                         </div>
-
+                     </div>
+                     <div class="column-right">
                         <div class="dropdown">
                             <button type="button" class="imageButton dropDownBtn" title="Locate" id="locate">
                                 <img src="assets/Locate.png" height="24" id="locateDropDownButtonInner" />
@@ -187,7 +193,6 @@
                     </div>
                 </div>
             </div>
-
             <div id="welcomePrompt" class="prompt invisible">
                 <h3 class="center">Welcome</h3><br>
                 <div class="center">
