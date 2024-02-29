@@ -16,9 +16,8 @@ const KEYCODE_ARROW_RIGHT = 39;
 
 var forceLatest = 1;
 var forcePollingRateValue = 20000;
-//var getGps = setInterval(function() {sendToPhone("locate gps");}, forcePollingRateValue);
-
 var writeGlobalAccessToken = setInterval(function() {}, 1000);
+
 
 function disableForcePolling(){
     clearInterval(getGps);
@@ -146,7 +145,38 @@ function setupOnClicks() {
     });
     document.getElementById("forcePollingRate").value = forcePollingRateValue/1000;
 
-    var getLatest = setInterval(function() {currentLocationDataIndx=newestLocationDataIndex;locate(currentLocationDataIndx);}, 200);
+
+    var currentLocationIndexSlider = document.getElementById("locIndexRange")
+    var currentLocationIndexPreview = document.getElementById("selectedIndexRange")
+    currentLocationIndexSlider.addEventListener('change', function() {
+    if(!(newestLocationDataIndex + parseInt(currentLocationIndexSlider.value)<0)){
+       currentLocationIndexPreview.innerHTML = newestLocationDataIndex + parseInt(currentLocationIndexSlider.value);
+       currentLocationDataIndx = newestLocationDataIndex + parseInt(currentLocationIndexSlider.value);
+       locate(currentLocationDataIndx);
+    }else{
+        currentLocationIndexPreview.innerHTML = 0;
+        currentLocationDataIndx = 0;
+        currentLocationIndexSlider.value = -1000+(1000-newestLocationDataIndex);
+        locate(currentLocationDataIndx);
+    }
+
+    });
+
+    currentLocationIndexSlider.oninput = function() {
+    if(!(newestLocationDataIndex + parseInt(currentLocationIndexSlider.value)<0)){
+        currentLocationIndexPreview.innerHTML = newestLocationDataIndex + parseInt(currentLocationIndexSlider.value);
+        currentLocationDataIndx = newestLocationDataIndex + parseInt(currentLocationIndexSlider.value);
+        locate(currentLocationDataIndx);
+        }else{
+        currentLocationIndexPreview.innerHTML = 0;
+        currentLocationIndexSlider.value = -1000+(1000-newestLocationDataIndex);
+        currentLocationDataIndx = 0;
+        locate(currentLocationDataIndx);
+    }
+
+    }
+
+    //var getLatest = setInterval(function() {currentLocationDataIndx=newestLocationDataIndex;locate(currentLocationDataIndx);}, 200);
 
     var forceLatestCheckbox = document.querySelector("input[name=forceLatest]");
     forceLatestCheckbox.addEventListener('change', function() {
@@ -250,6 +280,9 @@ async function prepareForLogin() {
         //    }
         e.preventDefault();
         });
+
+
+
 
     } else {
         await locate(-1);
