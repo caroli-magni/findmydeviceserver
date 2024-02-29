@@ -14,7 +14,7 @@ const KEYCODE_ENTER = 13;
 const KEYCODE_ARROW_LEFT = 37;
 const KEYCODE_ARROW_RIGHT = 39;
 
-var forceLatest = 1;
+var forceLatest = 0;
 var forcePollingRateValue = 20000;
 var writeGlobalAccessToken = setInterval(function() {}, 1000);
 
