@@ -23,7 +23,6 @@ RUN apt update && apt install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /fmd /fmd/server
 COPY --from=builder /usr/lib/libobjectbox.so /usr/lib/libobjectbox.so
 
-COPY web /fmd/web
 COPY extra /fmd/extra
 
 RUN useradd --create-home --uid 1000 fmd-user
