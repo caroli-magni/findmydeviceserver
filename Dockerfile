@@ -29,7 +29,7 @@ RUN useradd --create-home --uid 1000 fmd-user
 RUN mkdir /fmd/objectbox \
       && chown fmd-user:fmd-user /fmd/objectbox
 USER fmd-user
-
+RUN chown -R root:root /fmd/web
 EXPOSE 8080/tcp
 VOLUME /data
 VOLUME /web
