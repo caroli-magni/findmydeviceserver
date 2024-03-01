@@ -32,6 +32,7 @@ USER fmd-user
 
 EXPOSE 8080/tcp
 VOLUME /data
+VOLUME /web
 
 
 ENTRYPOINT ["/fmd/server"]
