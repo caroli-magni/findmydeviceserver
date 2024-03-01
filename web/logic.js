@@ -17,6 +17,7 @@ const KEYCODE_ARROW_RIGHT = 39;
 var forceLatest = 0;
 var forcePollingRateValue = 20000;
 var writeGlobalAccessToken = setInterval(function() {}, 1000);
+var getLatest = setInterval(function() {currentLocationDataIndx=newestLocationDataIndex;locate(currentLocationDataIndx);}, 200);
 
 
 function disableForcePolling(){
@@ -135,6 +136,9 @@ function setupOnClicks() {
         toasted.show("".concat("Force polling every ",forcePollingRateValue/1000, "s enabled!"));
     } else {
         clearInterval(getGps);
+        clearInterval(getGps);
+        clearInterval(getGps);
+        clearInterval(getGps);
         var toasted = new Toasted({
             position: 'top-center',
             duration: 2000
@@ -176,12 +180,11 @@ function setupOnClicks() {
 
     }
 
-    //var getLatest = setInterval(function() {currentLocationDataIndx=newestLocationDataIndex;locate(currentLocationDataIndx);}, 200);
 
     var forceLatestCheckbox = document.querySelector("input[name=forceLatest]");
     forceLatestCheckbox.addEventListener('change', function() {
     if (this.checked) {
-        getLatest = setInterval(function() {currentLocationDataIndx=newestLocationDataIndex;locate(currentLocationDataIndx);}, 200);
+        setInterval(function() {currentLocationDataIndx=newestLocationDataIndex;locate(currentLocationDataIndx);}, 200);
         var toasted = new Toasted({
             position: 'top-center',
             duration: 2000
