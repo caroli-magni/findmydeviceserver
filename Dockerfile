@@ -33,6 +33,5 @@ USER fmd-user
 EXPOSE 8080/tcp
 VOLUME /data
 VOLUME /web
-RUN chown -R root:root /fmd/web
 
 ENTRYPOINT ["/fmd/server"]
