@@ -1,6 +1,7 @@
 # FMD Server
 
-This is the official server for FMD ("Find My Device") written in Go.
+This is the official server for [FindMyDevice (FMD)](https://gitlab.com/Nulide/findmydevice)
+written in Go.
 
 The FMD app can register an account on FMD Server.
 The app can then upload its location at regular intervals.
@@ -18,9 +19,8 @@ we recommend to run FMD Server with Docker.
 
 Quickly try FMD Server on your laptop from the command line:
 
-```
-docker build --tag fmd-git https://gitlab.com/Nulide/findmydeviceserver.git#v0.5.0
-docker run --rm -p 8080:8080 fmd-git
+```bash
+docker run --rm -p 8080:8080 registry.gitlab.com/nulide/findmydeviceserver:v0.6.0
 ```
 
 You can now visit FMD Server's web interface in your browser at http://localhost:8080.
@@ -35,19 +35,27 @@ FMD Server's API (and hence the app) always works over HTTP - but this is highly
 
 ### Self-hosting with Docker Compose
 
+> ⚠️ FMD Server is still pre-1.0. Therefore, minor versions can introduce breaking changes.
+> It is recommended to pin a version and read [the changelog](https://gitlab.com/Nulide/findmydeviceserver/-/releases)
+> before upgrading.
+
 The following is an (incomplete) example for deploying FMD Server with Docker Compose.
 
 `docker-compose.yml`
 ```yml
-version: '3'
 services:
     fmd:
-        build: https://gitlab.com/Nulide/findmydeviceserver.git#v0.5.0
+        # Use the prebuilt image
+        image: registry.gitlab.com/nulide/findmydeviceserver:v0.6.0
+        # Or build the image yourself
+        # build: https://gitlab.com/Nulide/findmydeviceserver.git#v0.6.0
         container_name: fmd
         ports:
          - 127.0.0.1:8080:8080
         volumes:
-            - './data:/fmd/objectbox/'
+            - './fmddata/db/:/fmd/db/'
+            # Deprecated Objectbox storage. Mount if you want it auto-migrated to SQLite.
+            #- './fmddata/objectbox/:/fmd/objectbox/'
         restart: unless-stopped
 ```
 
@@ -55,9 +63,8 @@ Replace the version with the [latest release](https://gitlab.com/Nulide/findmyde
 
 *Persisting storage:*
 FMD has a database and needs to persist it across container restarts.
-You need to mount a Docker volume at `/fmd/objectbox/` inside the container.
+You need to mount a Docker volume to the directory `/fmd/db/` (inside the container).
 It must be readable and writable by uid 1000 (ideally it is owned by uid 1000).
-This example mounts a folder named `./data` (in the current directory outside the container).
 
 *Networking:*
 FMD Server listens for HTTP connections on port 8080.
@@ -91,6 +98,33 @@ To fix this increase the maximum body size, e.g to 20 MB:
 client_max_body_size 20m;
 ```
 
+#### Hosting in a subdirectory
+
+The FMD Server binary (whether run in Docker or not) assumes that request paths start at the root ("/").
+That is, it assumes that you host FMD Server on a (sub-)domain, e.g., `https://fmd.example.com`.
+
+If you host FMD Server in a subdirectory, e.g., `https://example.com/fmd/`, you need to configure
+your proxy to strip the subdirectory before forwarding the request to the backend.
+FMD Server does not know how to resolve `/fmd/api/`, it only knows about `/api/`.
+
+### Without Reverse Proxy
+
+> ⚠️ This setup is not recommended and provided for your convenience only.
+
+If you don't want to use a reverse proxy, FMD Server can terminate TLS for you.
+However, you need to manage (and regularly renew!) the certificates.
+
+1. Get a TLS certificate for your domain.
+1. Set the `ServerCrt` and `ServerKey` in the config file (see below).
+1. Mount the certificate and the private key into the container:
+
+```yml
+# other lines omitted
+volumes:
+    - ./server.crt:/fmd/server.crt:ro
+    - ./server.key:/fmd/server.key:ro
+```
+
 ## Configuring FMD Server
 
 The [`config.example.yml`](config.example.yml) contains the available options to configure FMD Server.
@@ -112,7 +146,7 @@ NOTE: `yml` not `yaml`!
 
 A simple way to test code changes is to build a container image locally and run that:
 
-```
+```bash
 docker build -t fmd-local .
 docker run --rm -p 8080:8080 fmd-local
 ```
@@ -126,6 +160,13 @@ The community has developed implementations of FMD Server in other languages/fra
 
 - [FindMyDeviceServerPHP](https://gitlab.com/Playit3110/FindMyDeviceServerPHP)
 - [Django Find My Device](https://gitlab.com/jedie/django-find-my-device)
+
+## Donate
+
+<script src="https://liberapay.com/Nulide/widgets/button.js"></script>
+<noscript><a href="https://liberapay.com/Nulide/donate"><img alt="Donate using Liberapay" src="https://liberapay.com/assets/widgets/donate.svg"></a></noscript>
+
+<a href='https://ko-fi.com/H2H35JLOY' target='_blank'><img height='36' style='border:0px;height:36px;' src='https://cdn.ko-fi.com/cdn/kofi4.png?v=2' border='0' alt='Buy Me a Coffee at ko-fi.com' /></a>
 
 ## License
 

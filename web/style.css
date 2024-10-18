@@ -24,9 +24,7 @@ label {
     margin: 10px;
     display: inline;
 }
-form {
-    display: inline-block;
-}
+
 input {
     margin: 10px;
     position: center;
@@ -52,7 +50,6 @@ button {
     color: #232323;
     border: none;
     border-radius: 4px;
-    height: 5%;
     padding: 10px;
     margin: 8px;
     font-size: medium;
@@ -71,10 +68,22 @@ footer {
     z-index: 2;
 }
 
-.center {
+.center-column {
     width: 100%;
     border: 1px solid black;
     display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border: none;
+}
+
+.center-row {
+    width: 100%;
+    border: 1px solid black;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: center;
     border: none;
@@ -104,8 +113,13 @@ footer {
     display: inline;
 }
 
-#locateButton {
-    width: 50%;
+#loginContainer > p {
+    max-width: 550px;
+}
+
+#loginButton {
+    width: 15%;
+    min-width: 125px;
 }
 
 #dataView {
@@ -223,50 +237,27 @@ footer {
 }
 
 #f-droid-badge {
-    height: 50%;
-    width: 50%;
+    width: 200px;
 }
 
-.slidecontainer {
-    width: 99%;
-    height: 25px;
-    position: absolute;
-    z-index: 1;
-}
-.slidepreviewcontainer {
-    width: 30%;
-    height: 25px;
-    position: absolute;
-    z-index: 1;
+#commandlogs {
+    margin: 20px;
+    display: block;
+    padding: 20px;
+    line-height: 28px;
+    white-space: pre-line;
 }
 
-.slider {
-  -webkit-appearance: none;
-  width: 98%;
-  height: 25px;
-  background: #d3d3d3;
-  outline: none;
-  opacity: 0.7;
-  -webkit-transition: .2s;
-  transition: opacity .2s;
+#pushWarning {
+    margin: 10px;
 }
 
-.slider:hover {
-  opacity: 1;
+#pushWarning > p {
+    color: #ff3333;
+    margin: 0;
 }
 
-.slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 10px;
-  height: 20px;
-  background: #04AA6D;
-  cursor: pointer;
-}
-
-.slider::-moz-range-thumb {
-  width: 10px;
-  height: 20px;
-  background: #04AA6D;
-  cursor: pointer;
+#pushWarning > p > a {
+    color: #ff3333;
+    margin: 0;
 }

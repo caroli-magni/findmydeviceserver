@@ -1,8 +1,9 @@
 var map, markers;
 
-var newestLocationDataIndex = 0;
+var newestLocationDataIndex;
 var currentLocationDataIndx = 0;
-var requestedIndex = 0;
+var locCache = new Map();
+
 var currentId;
 var globalPrivateKey;
 var globalAccessToken = "";
@@ -14,27 +15,8 @@ const KEYCODE_ENTER = 13;
 const KEYCODE_ARROW_LEFT = 37;
 const KEYCODE_ARROW_RIGHT = 39;
 
-var forceLatest = 0;
-var forcePollingRateValue = 20000;
-var writeGlobalAccessToken = setInterval(function() {}, 1000);
-var getLatest = setInterval(function() {currentLocationDataIndx=newestLocationDataIndex;locate(currentLocationDataIndx);}, 200);
-
-
-function disableForcePolling(){
-    clearInterval(getGps);
-}
-
-function applyForcePollingRate(){
-    forcePollingRateValue=document.getElementById("forcePollingRate").value*1000;
-    var toasted = new Toasted({
-    position: 'top-center',
-    duration: 2000
-    });
-    if(document.getElementById("forcePolling").checked){
-        toasted.show("".concat(forcePollingRateValue/1000, "s Polling rate applied!"));
-    }else{
-        toasted.show("".concat(forcePollingRateValue/1000, "s Polling rate applied! Remember to enable!"));
-    }
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 window.addEventListener("load", (event) => init());
@@ -46,6 +28,9 @@ window.onclick = function (event) {
     }
     if (event.target.id != "locateDropDownButtonInner") {
         document.getElementById("locateDropDown").style.display = "None";
+    }
+    if (event.target.id != "settingsDropDownButtonInner") {
+        document.getElementById("settingsDropDown").style.display = "None";
     }
 }
 
@@ -64,15 +49,15 @@ function init() {
     map = L.map(element);
     markers = L.layerGroup().addTo(map);
 
-    L.tileLayer('https://{s}.tile.osm.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://osm.org/copyright">OpenStreetMap</a> contributors'
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     }).addTo(map);
 
     var target = L.latLng('57', '13');
     map.setView(target, 1.5);
 
     var versionView = document.getElementById('version');
-    fetch("./version", {
+    fetch("api/v1/version", {
         method: 'GET'
     })
         .then(function (response) {
@@ -82,137 +67,44 @@ function init() {
             versionView.innerHTML = versionCode;
         })
 
-    //if (getWelcomeCookie() == "") {
-    //    welcomePrompt = document.getElementById('welcomePrompt');
-    //    welcomePrompt.style.visibility = 'visible';
-    //}
-
     setupOnClicks()
     checkWebCryptoApiAvailable()
 }
 
-
 function setupOnClicks() {
-    document.getElementById("welcomeConfirm").addEventListener("click", () => welcomeFinish());
-    document.getElementById("fmdid").addEventListener("keyup", (event) => {
-        if (event.key == "Enter") {
-            prepareForLogin();
-        }
+    document.getElementById("loginForm").addEventListener("submit", async (event) => {
+        // don't send a request to the server, we do it manually
+        event.preventDefault();
+
+        let fmdid = document.getElementById("fmdid").value;
+        let password = document.getElementById("password").value;
+        let useLongSession = document.getElementById("useLongSession").checked;
+        await doLogin(fmdid, password, useLongSession);
+
+        return false;
     });
 
-    document.getElementById("locateButton").addEventListener("click", async () => await prepareForLogin());
-    document.getElementById("locateOlder").addEventListener("click", function() {
-        if(!document.getElementById('forceLatest').checked){
-            locateOlder();
-        }else{
-            var toasted = new Toasted({
-                position: 'top-center',
-                duration: 2000
-        });
-        toasted.show("Disable Force Latest Position to scrub through history!");
-        }
-    });
-    document.getElementById("locateNewer").addEventListener("click", function() {
-        if(!document.getElementById('forceLatest').checked){
-            locateNewer();
-        }
-        else{
-                var toasted = new Toasted({
-                position: 'top-center',
-                duration: 2000
-        });
-        toasted.show("Force Latest Position is already on, timetraveller!");
-        }
-    });
-    var forcePollingCheckbox = document.querySelector("input[name=forcePolling]");
-    forcePollingCheckbox.addEventListener('change', function() {
-    if (this.checked) {
-        var getGps = setInterval(function() {sendToPhone("locate gps");}, forcePollingRateValue);
-        var toasted = new Toasted({
-            position: 'top-center',
-            duration: 2000
-        });
-        document.getElementById("forcePollingRate").value = forcePollingRateValue/1000;
-        toasted.show("".concat("Force polling every ",forcePollingRateValue/1000, "s enabled!"));
-    } else {
-        clearInterval(getGps);
-        clearInterval(getGps);
-        clearInterval(getGps);
-        clearInterval(getGps);
-        var toasted = new Toasted({
-            position: 'top-center',
-            duration: 2000
-        });
-        toasted.show('Force polling disabled!');
-
-      }
-    });
-    document.getElementById("forcePollingRate").value = forcePollingRateValue/1000;
-
-
-    var currentLocationIndexSlider = document.getElementById("locIndexRange")
-    var currentLocationIndexPreview = document.getElementById("selectedIndexRange")
-    currentLocationIndexSlider.addEventListener('change', function() {
-    if(!(newestLocationDataIndex + parseInt(currentLocationIndexSlider.value)<0)){
-       currentLocationIndexPreview.innerHTML = newestLocationDataIndex + parseInt(currentLocationIndexSlider.value);
-       currentLocationDataIndx = newestLocationDataIndex + parseInt(currentLocationIndexSlider.value);
-       locate(currentLocationDataIndx);
-    }else{
-        currentLocationIndexPreview.innerHTML = 0;
-        currentLocationDataIndx = 0;
-        currentLocationIndexSlider.value = -1000+(1000-newestLocationDataIndex);
-        locate(currentLocationDataIndx);
-    }
-
-    });
-
-    currentLocationIndexSlider.oninput = function() {
-    if(!(newestLocationDataIndex + parseInt(currentLocationIndexSlider.value)<0)){
-        currentLocationIndexPreview.innerHTML = newestLocationDataIndex + parseInt(currentLocationIndexSlider.value);
-        currentLocationDataIndx = newestLocationDataIndex + parseInt(currentLocationIndexSlider.value);
-        locate(currentLocationDataIndx);
-        }else{
-        currentLocationIndexPreview.innerHTML = 0;
-        currentLocationIndexSlider.value = -1000+(1000-newestLocationDataIndex);
-        currentLocationDataIndx = 0;
-        locate(currentLocationDataIndx);
-    }
-
-    }
-
-
-    var forceLatestCheckbox = document.querySelector("input[name=forceLatest]");
-    forceLatestCheckbox.addEventListener('change', function() {
-    if (this.checked) {
-        setInterval(function() {currentLocationDataIndx=newestLocationDataIndex;locate(currentLocationDataIndx);}, 200);
-        var toasted = new Toasted({
-            position: 'top-center',
-            duration: 2000
-        });
-        toasted.show('Force latest position enabled!');
-    } else {
-        clearInterval(getLatest);
-        var toasted = new Toasted({
-            position: 'top-center',
-            duration: 2000
-        });
-        toasted.show('Force latest position disabled!');
-      }
-    });
-
-    document.getElementById("applyForcePollingRateForm").addEventListener("submit", function(e) {applyForcePollingRate();e.preventDefault();});
-
+    document.getElementById("locateOlder").addEventListener("click", async () => await locateOlder());
+    document.getElementById("locateNewer").addEventListener("click", async () => await locateNewer());
     document.getElementById("locate").addEventListener("click", () => showLocateDropDown());
     document.getElementById("locateAll").addEventListener("click", () => sendToPhone("locate"));
     document.getElementById("locateGps").addEventListener("click", () => sendToPhone("locate gps"));
     document.getElementById("locateCellular").addEventListener("click", () => sendToPhone("locate cell"));
+    document.getElementById("locateLast").addEventListener("click", () => sendToPhone("locate last"));
     document.getElementById("ring").addEventListener("click", () => sendToPhone("ring"));
     document.getElementById("lock").addEventListener("click", () => sendToPhone("lock"));
     document.getElementById("delete").addEventListener("click", () => prepareDeleteDevice());
     document.getElementById("cameraFront").addEventListener("click", () => sendToPhone("camera front"));
     document.getElementById("cameraBack").addEventListener("click", () => sendToPhone("camera back"));
     document.getElementById("takePicture").addEventListener("click", () => showCameraDropDown());
+    document.getElementById("openSettings").addEventListener("click", () => showSettingsDropDown());
     document.getElementById("showPicture").addEventListener("click", async () => await showLatestPicture());
+    //Disabled Feature: CommandLogs
+    //document.getElementById("showCommandLogs").addEventListener("click", async () => await showCommandLogs());
+
+    document.getElementById("deleteAccount").addEventListener("click", async () => await deleteAccount());
+    document.getElementById("exportData").addEventListener("click", async () => await exportData());
+
 }
 
 function checkWebCryptoApiAvailable() {
@@ -225,81 +117,22 @@ function checkWebCryptoApiAvailable() {
 
 // Section: Login
 
-function onFmdIdKeyPressed(event) {
-    if (event.keyCode == KEYCODE_ENTER) {
-        prepareForLogin();
+const DURATION_DEFAULT_SECS = 15 * 60;      // 15 mins
+const DURATION_LONG_SECS = 7 * 24 * 60 * 60 // 1 week
+
+async function doLogin(fmdid, password, useLongSession) {
+    let sessionDurationSeconds = DURATION_DEFAULT_SECS;
+    if (useLongSession) {
+        sessionDurationSeconds = DURATION_LONG_SECS;
     }
-}
 
-async function prepareForLogin() {
-    let idInput = document.getElementById('fmdid');
-    if (idInput.value != "" && globalPrivateKey == null) {
-
-        var div = document.createElement("div");
-        div.id = "passwordPrompt";
-        div.classList.add("prompt");
-
-        var label = document.createElement("label");
-        label.id = "password_prompt_label";
-        label.className = "center"
-        label.innerHTML = "Please enter the password:";
-        label.for = "password_prompt_input";
-        div.appendChild(label);
-
-        div.appendChild(document.createElement("br"));
-
-        var centedInnerDiv = document.createElement("div");
-        centedInnerDiv.className = "center";
-        div.appendChild(centedInnerDiv);
-
-        loginForm=document.createElement('FORM');
-        loginForm.name='login_form';
-        div.appendChild(loginForm);
-
-
-        var input = document.createElement("input");
-        input.id = "password_prompt_input";
-        input.type = "password";
-        loginForm.appendChild(input);
-
-        div.appendChild(document.createElement("br"));
-        div.appendChild(document.createElement("br"));
-
-        document.body.appendChild(div);
-
-        var button = document.createElement("button");
-        button.id = "password_prompt_submit";
-        button.type = "submit";
-        loginForm.appendChild(button);
-        //form.addEventListener("submit", logSubmit);
-
-        //input.focus();
-        loginForm.addEventListener("submit", function (e) {
-        //    if (event.keyCode == KEYCODE_ENTER) {
-        //        if (input.value != "") {
-                    document.body.removeChild(div);
-                    doLogin(idInput.value, input.value);
-        //        }
-        //    }
-        e.preventDefault();
-        });
-
-
-
-
-    } else {
-        await locate(-1);
-    }
-}
-
-async function doLogin(fmdid, password) {
     currentId = fmdid;
     if (password == "") {
         alert("Password is empty.");
         return;
     }
 
-    let response = await fetch("./salt", {
+    let response = await fetch("api/v1/salt", {
         method: 'PUT',
         body: JSON.stringify({
             IDT: fmdid,
@@ -316,13 +149,11 @@ async function doLogin(fmdid, password) {
     legacyPasswordHash = hashPasswordForLoginLegacy(password, salt);
 
     try {
-        await tryLoginWithHash(fmdid, modernPasswordHash);
-        // fall through to locate()
+        await tryLoginWithHash(fmdid, modernPasswordHash, sessionDurationSeconds);
     } catch {
         console.log("Modern hash failed, trying legacy hash.");
         try {
-            await tryLoginWithHash(fmdid, legacyPasswordHash);
-            // fall through to locate()
+            await tryLoginWithHash(fmdid, legacyPasswordHash, sessionDurationSeconds);
         } catch (statusCode) {
             if (statusCode == 423) {
                 alert("Too many attempts. Try again in 10 minutes.");
@@ -341,20 +172,23 @@ async function doLogin(fmdid, password) {
         return;
     }
 
-    loginDiv = document.getElementById("login");
+    loginDiv = document.getElementById("loginContainer");
     if (loginDiv != null) {
         loginDiv.parentNode.removeChild(loginDiv);
     }
 
+    setupPushWarning();
+
     await locate(-1);
 }
 
-async function tryLoginWithHash(fmdid, passwordHash) {
-    const response = await fetch("./requestAccess", {
+async function tryLoginWithHash(fmdid, passwordHash, sessionDurationSeconds) {
+    const response = await fetch("api/v1/requestAccess", {
         method: 'PUT',
         body: JSON.stringify({
             IDT: fmdid,
             Data: passwordHash,
+            SessionDurationSeconds: sessionDurationSeconds,
         }),
         headers: {
             'Content-type': 'application/json'
@@ -370,7 +204,7 @@ async function tryLoginWithHash(fmdid, passwordHash) {
 }
 
 async function getPrivateKey(password) {
-    response = await fetch("./key", {
+    response = await fetch("api/v1/key", {
         method: 'PUT',
         body: JSON.stringify({
             IDT: globalAccessToken,
@@ -387,6 +221,64 @@ async function getPrivateKey(password) {
     globalPrivateKey = await unwrapPrivateKey(password, keyData.Data);
 }
 
+async function redirectToLogin(toastMessage) {
+    const toasted = new Toasted({
+        position: 'top-center',
+        duration: 3000
+    })
+    toasted.show(toastMessage);
+
+    await sleep(3000);
+
+    window.location.replace("/");
+}
+
+async function tokenExpiredRedirect() {
+    redirectToLogin('Session expired, please log in again.');
+}
+
+// Section: Push Warning
+
+async function setupPushWarning() {
+    if (!globalAccessToken) {
+        console.log("Missing accessToken!");
+        return;
+    }
+
+    response = await fetch("/push", {
+        method: 'POST',
+        body: JSON.stringify({
+            IDT: globalAccessToken,
+            Data: "",
+        }),
+        headers: {
+            'Content-type': 'application/json'
+        }
+    });
+    if (response.status == 401) {
+        tokenExpiredRedirect();
+        return
+    }
+    if (!response.ok) {
+        throw response.status;
+    }
+
+    const pushUrl = await response.text();
+
+    const ele = document.getElementById("pushWarning");
+    if (pushUrl) {
+        ele.innerHTML = ""
+    } else {
+        ele.innerHTML = `
+            <p>
+                It looks like UnifiedPush is not configured for this device.
+                Without push, FMD Server cannot control the device.
+                See <a href="https://gitlab.com/Nulide/findmydevice/-/wikis/PushSupport" target="_blank">the wiki</a> for more information.
+            </p>
+        `
+    }
+}
+
 // Section: Locate
 
 function showLocateDropDown() {
@@ -398,7 +290,7 @@ async function locate(requestedIndex) {
         console.log("Missing accessToken!");
         return;
     }
-    let response = await fetch("./locationDataSize", {
+    let response = await fetch("api/v1/locationDataSize", {
         method: 'PUT',
         body: JSON.stringify({
             IDT: globalAccessToken,
@@ -408,6 +300,10 @@ async function locate(requestedIndex) {
             'Content-type': 'application/json'
         }
     });
+    if (response.status == 401) {
+        tokenExpiredRedirect();
+        return
+    }
     if (!response.ok) {
         throw response.status;
     }
@@ -421,6 +317,7 @@ async function locate(requestedIndex) {
             position: 'top-center',
             duration: 3000
         })
+        toasted.show('No newer locations');
         return
     }
 
@@ -434,7 +331,7 @@ async function locate(requestedIndex) {
         return
     }
 
-    response = await fetch("./location", {
+    response = await fetch("api/v1/location", {
         method: 'PUT',
         body: JSON.stringify({
             IDT: globalAccessToken,
@@ -447,7 +344,6 @@ async function locate(requestedIndex) {
     if (!response.ok) {
         throw response.status;
     }
-
     const locationData = await response.json();
     var loc;
     try {
@@ -457,18 +353,42 @@ async function locate(requestedIndex) {
         setNoLocationDataAvailable("Error parsing location data");
         return;
     }
+    // Check if location is already in cache
+    // If not add the location and rearrange the items
+    if (!locCache.has(currentLocationDataIndx)) {
+        locCache.set(currentLocationDataIndx, loc);
+
+        const mapArray = Array.from(locCache);
+
+        const sortedByKeyArray = mapArray.sort((a, b) => a[0] - b[0]);
+
+        locCache = new Map(sortedByKeyArray);
+    }
+
+
     const time = new Date(loc.time);
 
     document.getElementsByClassName("deviceInfo")[0].style.display = "block";
     document.getElementById("idView").innerHTML = currentId;
     document.getElementById("dateView").innerHTML = time.toLocaleDateString();
     document.getElementById("timeView").innerHTML = time.toLocaleTimeString();
-    document.getElementById("providerView").innerHTML = globalAccessToken;
+    document.getElementById("providerView").innerHTML = loc.provider;
     document.getElementById("batView").innerHTML = loc.bat + " %";
 
-    const target = L.latLng(loc.lat, loc.lon);
+    lat_long = []   // All locations in an array. Needed for the line between points.
     markers.clearLayers();
-    L.marker(target).addTo(markers);
+
+    //Iterate through the cache and add every point to the map
+    locCache.forEach((locEntry, key) => {
+        target = L.latLng(locEntry.lat, locEntry.lon);
+        lat_long.push(target)
+        locTime = new Date(locEntry.time);
+        L.marker(target).bindTooltip(time.toLocaleString()).addTo(markers);
+    });
+    // Add the lines between the points
+    L.polyline(lat_long, { color: 'blue' }).addTo(markers);
+    //Zoom to the currently selected point
+    target = L.latLng(loc.lat, loc.lon);
     map.setView(target, 16);
 }
 
@@ -501,7 +421,7 @@ async function locateOlder() {
         currentLocationDataIndx -= 1;
         await locate(currentLocationDataIndx);
     } else {
-        currentLocationDataIndx = newestLocationDataIndex;
+        currentLocationDataIndx = 0;
     }
 }
 
@@ -514,15 +434,13 @@ async function locateNewer() {
 
 // Section: Command
 
-function sendToPhone(message) {
+async function sendToPhone(message) {
     if (!globalAccessToken) {
         console.log("Missing accessToken!");
         return;
     }
-    //if(document.getElementById("forcePolling").checked){
-    //    clearInterval(getGps);
-    //}
-    fetch("./command", {
+
+    response = await fetch("api/v1/command", {
         method: 'POST',
         body: JSON.stringify({
             IDT: globalAccessToken,
@@ -531,15 +449,48 @@ function sendToPhone(message) {
         headers: {
             'Content-type': 'application/json'
         }
-    }).then(function (response) {
-        var toasted = new Toasted({
-            position: 'top-center',
-            duration: 2000
-        })
-        toasted.show('Polling GPS...');
-    })
+    });
+    if (response.status == 401) {
+        tokenExpiredRedirect();
+        return
+    }
+    if (!response.ok) {
+        throw response.status;
+    }
+    var toasted = new Toasted({
+        position: 'top-center',
+        duration: 2000
+    });
+    toasted.show('Command send!');
 }
 
+async function showCommandLogs() {
+    if (!globalAccessToken) {
+        console.log("Missing accessToken!");
+        return;
+    }
+
+    response = await fetch("api/v1/commandLogs", {
+        method: 'PUT',
+        body: JSON.stringify({
+            IDT: globalAccessToken,
+            Data: "",
+        }),
+        headers: {
+            'Content-type': 'application/json'
+        }
+    });
+    if (response.status == 401) {
+        tokenExpiredRedirect();
+        return
+    }
+    if (!response.ok) {
+        throw response.status;
+    }
+    const json = await response.json();
+    logs = await parseCommandLogs(globalPrivateKey, json.Data);
+    displayCommandLogs(logs)
+}
 // Section: Picture
 
 async function showLatestPicture() {
@@ -547,7 +498,7 @@ async function showLatestPicture() {
         console.log("Missing accessToken!");
         return;
     }
-    const response = await fetch("./pictureSize", {
+    const response = await fetch("api/v1/pictureSize", {
         method: 'PUT',
         body: JSON.stringify({
             IDT: globalAccessToken,
@@ -557,6 +508,10 @@ async function showLatestPicture() {
             'Content-type': 'application/json'
         }
     });
+    if (response.status == 401) {
+        tokenExpiredRedirect();
+        return
+    }
     if (!response.ok) {
         throw response.status;
     }
@@ -580,7 +535,7 @@ async function loadPicture(index) {
         console.log("Missing accessToken!");
         return;
     }
-    const response = await fetch("./picture", {
+    const response = await fetch("api/v1/picture", {
         method: 'PUT',
         body: JSON.stringify({
             IDT: globalAccessToken,
@@ -590,6 +545,10 @@ async function loadPicture(index) {
             'Content-type': 'application/json'
         }
     });
+    if (response.status == 401) {
+        tokenExpiredRedirect();
+        return
+    }
     if (!response.ok) {
         throw response.status;
     }
@@ -647,37 +606,39 @@ function displaySinglePicture(picture) {
     document.body.appendChild(div);
 }
 
+function displayCommandLogs(logs) {
+    var div = document.createElement("div");
+    div.classList.add("prompt");
+
+    var logP = document.createElement("p");
+    logP.id = "commandlogs"
+    logP.innerHTML = logs;
+    div.appendChild(logP);
+
+    var buttonDiv = document.createElement("div");
+    buttonDiv.className = "center";
+
+    var btn = document.createElement("button");
+    btn.innerHTML = "close";
+    btn.addEventListener('click', function () {
+        document.body.removeChild(div);
+    }, false);
+    buttonDiv.appendChild(btn);
+
+    div.appendChild(buttonDiv);
+    document.body.appendChild(div);
+}
+
 // Section: Camera
 
 function showCameraDropDown() {
     document.getElementById("cameraDropDown").style.display = "block";
 }
 
-// Section: Welcome popup
+// Section: Settings
 
-function getWelcomeCookie() {
-    let name = "welcome=";
-    let decodedCookie = decodeURIComponent(document.cookie);
-    let ca = decodedCookie.split(';');
-    for (let i = 0; i < ca.length; i++) {
-        let c = ca[i];
-        while (c.charAt(0) == ' ') {
-            c = c.substring(1);
-        }
-        if (c.indexOf(name) == 0) {
-            return c.substring(name.length, c.length);
-        }
-    }
-    return "";
-}
-
-function welcomeFinish() {
-    const d = new Date();
-    d.setTime(d.getTime() + (365 * 24 * 60 * 60 * 1000));
-    let expires = "expires=" + d.toUTCString();
-    document.cookie = "welcome=true;" + expires + ";path=/;SameSite=Strict";
-    welcomePrompt = document.getElementById('welcomePrompt');
-    welcomePrompt.style.visibility = 'hidden';
+function showSettingsDropDown() {
+    document.getElementById("settingsDropDown").style.display = "block";
 }
 
 // Section: Delete device
@@ -724,4 +685,115 @@ function prepareDeleteDevice() {
         }
     }, false);
 
+}
+
+// Section: Delete Account
+
+async function deleteAccount() {
+    if (!confirm("Do you really want to delete this account and all associated data from the server?")) {
+        const toasted = new Toasted({
+            position: 'top-center',
+            duration: 3000
+        })
+        toasted.show("Account deletion cancelled");
+        return;
+    }
+    if (!globalAccessToken) {
+        console.log("Missing accessToken!");
+        return;
+    }
+    const response = await fetch("api/v1/device", {
+        method: 'POST',
+        body: JSON.stringify({
+            IDT: globalAccessToken,
+            Data: ""
+        }),
+        headers: {
+            'Content-type': 'application/json'
+        }
+    });
+    if (response.status == 401) {
+        tokenExpiredRedirect();
+        return;
+    }
+    if (!response.ok) {
+        throw response.status;
+    }
+    redirectToLogin("Account deleted");
+}
+
+// Section: Export Data
+
+async function exportData() {
+    if (!confirm("Would you like to download and export all data associated with your account?")) {
+        return;
+    }
+    if (!globalAccessToken) {
+        console.log("Missing accessToken!");
+        return;
+    }
+    const locationsData = await fetch("api/v1/locations", {
+        method: 'POST',
+        body: JSON.stringify({
+            IDT: globalAccessToken,
+            Data: ""
+        }),
+        headers: {
+            'Content-type': 'application/json'
+        }
+    });
+    if (response.status == 401) {
+        tokenExpiredRedirect();
+        return;
+    }
+    if (!response.ok) {
+        throw response.status;
+    }
+    locationsCSV = "Date,Provider,Battery Percentage,Longitude,Latitude\n";
+    locationsAsJSON = await locationsData.json();
+    for (locationJSON of locationsAsJSON){
+        loc = await parseLocation(globalPrivateKey, JSON.parse(locationJSON))
+        locationsCSV+=loc.time+","+loc.provider+","+loc.bat+","+loc.lon+","+loc.lat+"\n"
+    }
+    const picturesData = await fetch("api/v1/pictures", {
+        method: 'POST',
+        body: JSON.stringify({
+            IDT: globalAccessToken,
+            Data: ""
+        }),
+        headers: {
+            'Content-type': 'application/json'
+        }
+    });
+    if (response.status == 401) {
+        tokenExpiredRedirect();
+        return
+    }
+    if (!response.ok) {
+        throw response.status;
+    }
+    picturesAsJSON = await picturesData.json();
+    pictures = [];
+    for (picture of picturesAsJSON){
+        pic = await parsePicture(globalPrivateKey, picture);
+        pictures.push(pic);
+    }
+    var zip = new JSZip();
+    zip.file("locations.csv",locationsCSV);
+    var img = zip.folder("pictures");
+    for ([index,pic] of pictures.entries()){
+        img.file(String(index)+".png", pic, { base64: true });
+    }
+    zip.generateAsync({type:"blob"}).then(function(content){
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(content);
+        link.download = "fmdexport.zip";
+
+        // Append to the document and trigger download
+        document.body.appendChild(link);
+        link.click();
+
+        // Clean up
+        document.body.removeChild(link);
+    });
 }

@@ -19,17 +19,15 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Some IO variables
-var VERSION = "v0.5.0"
-var WEB_DIR = "web"
-var uio user.UserIO
+const VERSION = "v0.6.0"
+const WEB_DIR = "web"
 
 // Server Config
-const SERVER_CERT = "server.crt"
-const SERVER_KEY = "server.key"
 const CONFIG_FILE = "config.yml"
 
 var isIdValid = regexp.MustCompile(`^[a-zA-Z0-9]*$`).MatchString
+
+var uio user.UserRepository
 
 type config struct {
 	PortSecure        int    `yaml:"PortSecure"`
@@ -38,39 +36,48 @@ type config struct {
 	MaxSavedLoc       int    `yaml:"MaxSavedLoc"`
 	MaxSavedPic       int    `yaml:"MaxSavedPic"`
 	RegistrationToken string `yaml:"RegistrationToken"`
+	ServerCrt         string `yaml:"ServerCrt"`
+	ServerKey         string `yaml:"ServerKey"`
 }
 
 // Deprecated: used only by old clients. Modern clients use the opaque DataPackage.
 type locationData struct {
-	IDT      string `'json:"idt"`
-	Provider string `'json:"provider"`
-	Date     uint64 `'json:"date"`
-	Bat      string `'json:"bat"`
-	Lon      string `json:"lon"`
-	Lat      string `json:"lat"`
+	IDT      string
+	Provider string
+	Date     uint64
+	Bat      string
+	Lon      string
+	Lat      string
 }
 
 type registrationData struct {
-	Salt              string `'json:"salt"`
-	HashedPassword    string `'json:"hashedPassword"`
-	PubKey            string `'json:"pubKey"`
-	PrivKey           string `'json:"privKey"`
-	RegistrationToken string `'json:"registrationToken"`
+	Salt              string
+	HashedPassword    string
+	PubKey            string
+	PrivKey           string
+	RegistrationToken string
 }
 
 type passwordUpdateData struct {
-	IDT            string `'json:"idt"`
-	Salt           string `'json:"salt"`
-	HashedPassword string `'json:"hashedPassword"`
-	PrivKey        string `'json:"privKey"`
+	IDT            string
+	Salt           string
+	HashedPassword string
+	PrivKey        string
+}
+
+// This is historically grown, and was originally a DataPackage
+type loginData struct {
+	IDT                    string
+	PasswordHash           string `json:"Data"`
+	SessionDurationSeconds uint64
 }
 
 // universal package for string transfer
 // IDT = DeviceID or AccessToken
 // If both will be send. ID is always IDT
 type DataPackage struct {
-	IDT  string `'json:"Identifier"`
-	Data string `'json:"Data"`
+	IDT  string
+	Data string
 }
 
 // ------- Location -------
@@ -79,21 +86,43 @@ func getLocation(w http.ResponseWriter, r *http.Request) {
 	var request DataPackage
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
-		http.Error(w, "Meeep!, Error - getLocation 1", http.StatusBadRequest)
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
-	id := uio.ACC.CheckAccessToken(request.IDT)
-	if id == "" {
-		http.Error(w, "Meeep!, Error - getLocation 2", http.StatusBadRequest)
+	user, err := uio.CheckAccessTokenAndGetUser(request.IDT)
+	if err != nil {
+		http.Error(w, "Access Token not valid", http.StatusUnauthorized)
 		return
 	}
 	index, _ := strconv.Atoi(request.Data)
 	if index == -1 {
-		index = uio.GetLocationSize(id)
+		index = uio.GetLocationSize(user)
 	}
-	data := uio.GetLocation(id, index)
+	data := uio.GetLocation(user, index)
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(fmt.Sprint(string(data))))
+}
+
+func getAllLocations(w http.ResponseWriter, r *http.Request) {
+	var request DataPackage
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+	user, err := uio.CheckAccessTokenAndGetUser(request.IDT)
+	if err != nil {
+		http.Error(w, "Access Token not valid", http.StatusUnauthorized)
+		return
+	}
+	data := uio.GetAllLocations(user)
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		http.Error(w, "Failed to export data", http.StatusConflict)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(fmt.Sprint(string(jsonData))))
 }
 
 func postLocation(w http.ResponseWriter, r *http.Request) {
@@ -126,14 +155,14 @@ func postLocationModern(w http.ResponseWriter, body []byte) bool {
 		// not a valid modern location package
 		return false
 	}
-	id := uio.ACC.CheckAccessToken(request.IDT)
-	if id == "" {
-		http.Error(w, "Meeep!, Error - postLocationModern 2", http.StatusBadRequest)
+	user, err := uio.CheckAccessTokenAndGetUser(request.IDT)
+	if err != nil {
+		http.Error(w, "Access Token not valid", http.StatusUnauthorized)
 		return true
 	}
 
 	locationAsString, _ := json.MarshalIndent(request, "", " ")
-	uio.AddLocation(id, string(locationAsString))
+	uio.AddLocation(user, string(locationAsString))
 	return true
 }
 
@@ -144,14 +173,14 @@ func postLocationLegacy(w http.ResponseWriter, body []byte) bool {
 		fmt.Println("Failed to decode as locationData:", err)
 		return false
 	}
-	id := uio.ACC.CheckAccessToken(location.IDT)
-	if id == "" {
-		http.Error(w, "Meeep!, Error - postLocationLegacy 2", http.StatusBadRequest)
+	user, err := uio.CheckAccessTokenAndGetUser(location.IDT)
+	if err != nil {
+		http.Error(w, "Access Token not valid", http.StatusUnauthorized)
 		return true
 	}
 
 	locationAsString, _ := json.MarshalIndent(location, "", " ")
-	uio.AddLocation(id, string(locationAsString))
+	uio.AddLocation(user, string(locationAsString))
 	return true
 }
 
@@ -159,16 +188,16 @@ func getLocationDataSize(w http.ResponseWriter, r *http.Request) {
 	var request DataPackage
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
-		http.Error(w, "Meeep!, Error - getLocationDataSize 1", http.StatusBadRequest)
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
-	id := uio.ACC.CheckAccessToken(request.IDT)
-	if id == "" {
-		http.Error(w, "Meeep!, Error - getLocationDataSize 2", http.StatusBadRequest)
+	user, err := uio.CheckAccessTokenAndGetUser(request.IDT)
+	if err != nil {
+		http.Error(w, "Access Token not valid", http.StatusUnauthorized)
 		return
 	}
 
-	size := uio.GetLocationSize(id)
+	size := uio.GetLocationSize(user)
 
 	dataSize := DataPackage{Data: strconv.Itoa(size)}
 	result, _ := json.Marshal(dataSize)
@@ -182,37 +211,60 @@ func getPicture(w http.ResponseWriter, r *http.Request) {
 	var request DataPackage
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
-		http.Error(w, "Meeep!, Error - getPicture 1", http.StatusBadRequest)
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
-	id := uio.ACC.CheckAccessToken(request.IDT)
-	if id == "" {
-		http.Error(w, "Meeep!, Error - getPicture 2", http.StatusBadRequest)
+	user, err := uio.CheckAccessTokenAndGetUser(request.IDT)
+	if err != nil {
+		http.Error(w, "Access Token not valid", http.StatusUnauthorized)
 		return
 	}
+
 	index, _ := strconv.Atoi(request.Data)
 	if index == -1 {
-		index = uio.GetPictureSize(id)
+		index = uio.GetPictureSize(user)
 	}
-	data := uio.GetPicture(id, index)
+	data := uio.GetPicture(user, index)
 	w.Header().Set("Content-Type", "text/plain")
 	w.Write([]byte(fmt.Sprint(string(data))))
+}
+
+func getAllPictures(w http.ResponseWriter, r *http.Request) {
+	var request DataPackage
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+	user, err := uio.CheckAccessTokenAndGetUser(request.IDT)
+	if err != nil {
+		http.Error(w, "Access Token not valid", http.StatusUnauthorized)
+		return
+	}
+	data := uio.GetAllPictures(user)
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		http.Error(w, "Failed to export data", http.StatusConflict)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(fmt.Sprint(string(jsonData))))
 }
 
 func getPictureSize(w http.ResponseWriter, r *http.Request) {
 	var request DataPackage
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
-		http.Error(w, "Meeep!, Error - getPictureSize 1", http.StatusBadRequest)
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
-	id := uio.ACC.CheckAccessToken(request.IDT)
-	if id == "" {
-		http.Error(w, "Meeep!, Error - getPictureSize 2", http.StatusBadRequest)
+	user, err := uio.CheckAccessTokenAndGetUser(request.IDT)
+	if err != nil {
+		http.Error(w, "Access Token not valid", http.StatusUnauthorized)
 		return
 	}
 
-	highest := uio.GetPictureSize(id)
+	highest := uio.GetPictureSize(user)
 
 	dataSize := DataPackage{Data: strconv.Itoa(highest)}
 	result, _ := json.Marshal(dataSize)
@@ -224,17 +276,17 @@ func postPicture(w http.ResponseWriter, r *http.Request) {
 	var data DataPackage
 	err := json.NewDecoder(r.Body).Decode(&data)
 	if err != nil {
-		http.Error(w, "Meeep!, Error - postPicture 1", http.StatusBadRequest)
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
-	id := uio.ACC.CheckAccessToken(data.IDT)
-	if id == "" {
-		http.Error(w, "Meeep!, Error - postPicture 2", http.StatusBadRequest)
+	user, err := uio.CheckAccessTokenAndGetUser(data.IDT)
+	if err != nil {
+		http.Error(w, "Access Token not valid", http.StatusUnauthorized)
 		return
 	}
 
 	picture := data.Data
-	uio.AddPicture(id, picture)
+	uio.AddPicture(user, picture)
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -244,15 +296,16 @@ func getPrivKey(w http.ResponseWriter, r *http.Request) {
 	var request DataPackage
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
-		http.Error(w, "Meeep!, Error - getPrivKey 1", http.StatusBadRequest)
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
-	id := uio.ACC.CheckAccessToken(request.IDT)
-	if id == "" {
-		http.Error(w, "Meeep!, Error - getPrivKey 2", http.StatusBadRequest)
+	user, err := uio.CheckAccessTokenAndGetUser(request.IDT)
+	if err != nil {
+		http.Error(w, "Access Token not valid", http.StatusUnauthorized)
 		return
 	}
-	dataReply := DataPackage{IDT: request.IDT, Data: uio.GetPrivateKey(id)}
+
+	dataReply := DataPackage{IDT: request.IDT, Data: uio.GetPrivateKey(user)}
 	result, _ := json.Marshal(dataReply)
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(result)
@@ -262,15 +315,16 @@ func getPubKey(w http.ResponseWriter, r *http.Request) {
 	var request DataPackage
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
-		http.Error(w, "Meeep!, Error - getPubKey 1", http.StatusBadRequest)
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
-	id := uio.ACC.CheckAccessToken(request.IDT)
-	if id == "" {
-		http.Error(w, "Meeep!, Error - getPubKey 2", http.StatusBadRequest)
+	user, err := uio.CheckAccessTokenAndGetUser(request.IDT)
+	if err != nil {
+		http.Error(w, "Access Token not valid", http.StatusUnauthorized)
 		return
 	}
-	dataReply := DataPackage{IDT: request.IDT, Data: uio.GetPublicKey(id)}
+
+	dataReply := DataPackage{IDT: request.IDT, Data: uio.GetPublicKey(user)}
 	result, _ := json.Marshal(dataReply)
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(result)
@@ -282,79 +336,125 @@ func getCommand(w http.ResponseWriter, r *http.Request) {
 	var data DataPackage
 	err := json.NewDecoder(r.Body).Decode(&data)
 	if err != nil {
-		http.Error(w, "Meeep!, Error - getCommand 1", http.StatusBadRequest)
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
-	id := uio.ACC.CheckAccessToken(data.IDT)
-	if id == "" {
-		http.Error(w, "Meeep!, Error - getCommand 2", http.StatusBadRequest)
+	user, err := uio.CheckAccessTokenAndGetUser(data.IDT)
+	if err != nil {
+		http.Error(w, "Access Token not valid", http.StatusUnauthorized)
 		return
 	}
-	commandAsString := uio.GetCommandToUser(id)
-	if commandAsString != "" {
-		reply := DataPackage{IDT: data.IDT, Data: commandAsString}
-		result, _ := json.Marshal(reply)
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(result))
-		uio.SetCommandToUser(id, "")
-	} else {
-		reply := DataPackage{IDT: data.IDT, Data: ""}
-		result, _ := json.Marshal(reply)
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(result))
-	}
+	commandAsString := uio.GetCommandToUser(user)
 
+	// commandAsString may be an empty string, that's fine
+	reply := DataPackage{IDT: data.IDT, Data: commandAsString}
+	result, _ := json.Marshal(reply)
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(result))
+
+	// Clear the command so that the app only GETs it once
+	uio.SetCommandToUser(user, "")
 }
 
 func postCommand(w http.ResponseWriter, r *http.Request) {
 	var data DataPackage
 	err := json.NewDecoder(r.Body).Decode(&data)
 	if err != nil {
-		http.Error(w, "Meeep!, Error - postCommand 1", http.StatusBadRequest)
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
-	id := uio.ACC.CheckAccessToken(data.IDT)
-	if id == "" {
-		http.Error(w, "Meeep!, Error - postCommand 2", http.StatusBadRequest)
+	user, err := uio.CheckAccessTokenAndGetUser(data.IDT)
+	if err != nil {
+		http.Error(w, "Access Token not valid", http.StatusUnauthorized)
 		return
 	}
-	uio.SetCommandToUser(id, data.Data)
+	uio.SetCommandToUser(user, data.Data)
 	w.WriteHeader(http.StatusOK)
-	pushUser(id)
+	pushUser(user)
 }
 
-func pushUser(id string) {
-	pushUrl := strings.Replace(uio.GetPushUrl(id), "/UP?", "/message?", -1)
+func getCommandLog(w http.ResponseWriter, r *http.Request) {
+	var data DataPackage
+	err := json.NewDecoder(r.Body).Decode(&data)
+	if err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+	user, err := uio.CheckAccessTokenAndGetUser(data.IDT)
+	if err != nil {
+		http.Error(w, "Access Token not valid", http.StatusUnauthorized)
+		return
+	}
+
+	commandLog := uio.GetCommandLog(user)
+
+	// commandLogs may be empty, that's fine
+	reply := DataPackage{IDT: data.IDT, Data: commandLog}
+	result, _ := json.Marshal(reply)
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(result))
+}
+
+// ------- Push -------
+
+func pushUser(user *user.FMDUser) {
+	pushUrl := strings.Replace(uio.GetPushUrl(user), "/UP?", "/message?", -1)
+
+	if len(pushUrl) == 0 {
+		fmt.Printf("Cannot push user %s. Reason: pushUrl is empty. They should install a UnifiedPush distributor on their phone.", user.UID)
+		return
+	}
 
 	var jsonData = []byte(`{
 		"message": "fmd app wakeup",
 		"priority": 5
 	}`)
-	request, _ := http.NewRequest("POST", pushUrl, bytes.NewBuffer(jsonData))
+	request, err := http.NewRequest("POST", pushUrl, bytes.NewBuffer(jsonData))
+	if err != nil {
+		fmt.Println("Error building push request:", err)
+		return
+	}
 	request.Header.Set("Content-Type", "application/json; charset=UTF-8")
 
 	client := &http.Client{}
-	_, err := client.Do(request)
+	_, err = client.Do(request)
 	if err != nil {
 		fmt.Println("Error sending push: ", err)
 		return
 	}
 }
 
-func postPushLink(w http.ResponseWriter, r *http.Request) {
+func getPushUrl(w http.ResponseWriter, r *http.Request) {
 	var data DataPackage
 	err := json.NewDecoder(r.Body).Decode(&data)
 	if err != nil {
-		http.Error(w, "Meeep!, Error - postCommand 1", http.StatusBadRequest)
+		http.Error(w, "Meeep!, Error - getIsPushRegistered 1", http.StatusBadRequest)
 		return
 	}
-	id := uio.ACC.CheckAccessToken(data.IDT)
-	if id == "" {
-		http.Error(w, "Meeep!, Error - postCommand 2", http.StatusBadRequest)
+	user, err := uio.CheckAccessTokenAndGetUser(data.IDT)
+	if err != nil {
+		http.Error(w, "Access Token not valid", http.StatusUnauthorized)
 		return
 	}
 
-	uio.SetPushUrl(id, data.Data)
+	url := uio.GetPushUrl(user)
+	w.Write([]byte(fmt.Sprint(url)))
+}
+
+func postPushUrl(w http.ResponseWriter, r *http.Request) {
+	var data DataPackage
+	err := json.NewDecoder(r.Body).Decode(&data)
+	if err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+	user, err := uio.CheckAccessTokenAndGetUser(data.IDT)
+	if err != nil {
+		http.Error(w, "Access Token not valid", http.StatusUnauthorized)
+		return
+	}
+
+	uio.SetPushUrl(user, data.Data)
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -364,11 +464,11 @@ func requestSalt(w http.ResponseWriter, r *http.Request) {
 	var data DataPackage
 	err := json.NewDecoder(r.Body).Decode(&data)
 	if err != nil {
-		http.Error(w, "Meeep!, Error - requestSalt 1", http.StatusBadRequest)
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
 	if !isIdValid(data.IDT) {
-		http.Error(w, "Meeep!, Error - requestSalt 2", http.StatusBadRequest)
+		http.Error(w, "Invalid FMD ID", http.StatusBadRequest)
 		return
 	}
 	salt := uio.GetSalt(data.IDT)
@@ -380,43 +480,48 @@ func requestSalt(w http.ResponseWriter, r *http.Request) {
 }
 
 func requestAccess(w http.ResponseWriter, r *http.Request) {
-	var data DataPackage
+	var data loginData
 	err := json.NewDecoder(r.Body).Decode(&data)
 	if err != nil {
-		http.Error(w, "Meeep!, Error - requestAccess 1", http.StatusBadRequest)
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
 	if !isIdValid(data.IDT) {
-		http.Error(w, "Meeep!, Error - requestAccess 2", http.StatusBadRequest)
+		http.Error(w, "Invalid FMD ID", http.StatusBadRequest)
 		return
 	}
-	if uio.ACC.IsLocked(data.IDT) {
-		http.Error(w, "Meeep!, Error - requestAccess 3", http.StatusLocked)
-		uio.SetCommandToUser(data.IDT, "423")
+
+	accessToken, err := uio.RequestAccess(data.IDT, data.PasswordHash, data.SessionDurationSeconds)
+
+	if err == user.ErrAccountLocked {
+		http.Error(w, "Account is locked", http.StatusLocked)
 		return
 	}
-	granted, accessToken := uio.RequestAccess(data.IDT, data.Data)
-	if granted {
-		accessTokenReply := DataPackage{IDT: data.IDT, Data: accessToken.Token}
-		result, _ := json.Marshal(accessTokenReply)
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(result)
-	} else {
-		uio.ACC.IncrementLock(data.IDT)
-		http.Error(w, "Meeep!, Error - requestAccess 4", http.StatusForbidden)
+	if err != nil {
+		http.Error(w, "Access denied", http.StatusForbidden)
+		return
 	}
+
+	accessTokenReply := DataPackage{IDT: data.IDT, Data: accessToken.Token}
+	result, _ := json.Marshal(accessTokenReply)
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(result)
 }
 
 func postPassword(w http.ResponseWriter, r *http.Request) {
 	var data passwordUpdateData
 	err := json.NewDecoder(r.Body).Decode(&data)
 	if err != nil {
-		http.Error(w, "Meeep!, Error - password", http.StatusBadRequest)
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
-	id := uio.ACC.CheckAccessToken(data.IDT)
+	user, err := uio.CheckAccessTokenAndGetUser(data.IDT)
+	if err != nil {
+		http.Error(w, "Access Token not valid", http.StatusUnauthorized)
+		return
+	}
 
-	uio.UpdateUserPassword(id, data.PrivKey, data.Salt, data.HashedPassword)
+	uio.UpdateUserPassword(user, data.PrivKey, data.Salt, data.HashedPassword)
 
 	dataReply := DataPackage{IDT: data.IDT, Data: "true"}
 	result, _ := json.Marshal(dataReply)
@@ -430,15 +535,15 @@ func deleteDevice(w http.ResponseWriter, r *http.Request) {
 	var data DataPackage
 	err := json.NewDecoder(r.Body).Decode(&data)
 	if err != nil {
-		http.Error(w, "Meeep!, Error - deleteDevice 1", http.StatusBadRequest)
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
-	id := uio.ACC.CheckAccessToken(data.IDT)
-	if id == "" {
-		http.Error(w, "Meeep!, Error - deleteDevice 2", http.StatusBadRequest)
+	user, err := uio.CheckAccessTokenAndGetUser(data.IDT)
+	if err != nil {
+		http.Error(w, "Access Token not valid", http.StatusUnauthorized)
 		return
 	}
-	uio.DeleteUser(id)
+	uio.DeleteUser(user)
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -451,13 +556,13 @@ func (h createDeviceHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	err := json.NewDecoder(r.Body).Decode(&reg)
 	if err != nil {
 		fmt.Println("ERROR: decoding json:", err)
-		http.Error(w, "Meeep!, Error - createDevice", http.StatusBadRequest)
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
 
 	if h.RegistrationToken != "" && h.RegistrationToken != reg.RegistrationToken {
 		fmt.Println("ERROR: invalid RegistrationToken!")
-		http.Error(w, "Meeep!, Error - createDevice", http.StatusUnauthorized)
+		http.Error(w, "Registration Token not valid", http.StatusUnauthorized)
 		return
 	}
 
@@ -472,7 +577,7 @@ func (h createDeviceHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // ------- Main Web Request Handling -------
 
 func getVersion(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte(fmt.Sprint(VERSION)))
+	fmt.Fprint(w, VERSION)
 }
 
 func mainLocation(w http.ResponseWriter, r *http.Request) {
@@ -502,6 +607,19 @@ func mainCommand(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func mainPushUrl(w http.ResponseWriter, r *http.Request) {
+	// This is inverted, and not nice, but it has grown historically...
+	// Ideally the HTTP methods would be GET and PUT (or possibly POST).
+	// But the app is using PUT to set the URL, so we need to keep that.
+	// And we cannot have a body in GET requests, so we need to use POST.
+	switch r.Method {
+	case http.MethodPost:
+		getPushUrl(w, r)
+	case http.MethodPut:
+		postPushUrl(w, r)
+	}
+}
+
 type mainDeviceHandler struct {
 	createDeviceHandler createDeviceHandler
 }
@@ -515,46 +633,79 @@ func (h mainDeviceHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handleRequests(filesDir string, webDir string, config config) {
+// Adds various security headers.
+// Check your deployment with https://securityheaders.com.
+func securityHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Xss-Protection", "1; mode=block")
+		w.Header().Set("Content-Security-Policy", "default-src 'self' ; img-src 'self' data: https://*.tile.openstreetmap.org ; script-src 'self' 'wasm-unsafe-eval' ; upgrade-insecure-requests")
+		w.Header().Set("Permissions-Policy", "camera=(), microphone=()")
+		w.Header().Set("Referrer-Policy", "same-origin")
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+func handleRequests(webDir string, config config) {
 	mainDeviceHandler := mainDeviceHandler{createDeviceHandler{config.RegistrationToken}}
 
-	http.Handle("/", http.FileServer(http.Dir(webDir)))
-	http.HandleFunc("/command", mainCommand)
-	http.HandleFunc("/command/", mainCommand)
-	http.HandleFunc("/location", mainLocation)
-	http.HandleFunc("/location/", mainLocation)
-	http.HandleFunc("/locationDataSize", getLocationDataSize)
-	http.HandleFunc("/locationDataSize/", getLocationDataSize)
-	http.HandleFunc("/picture", mainPicture)
-	http.HandleFunc("/picture/", mainPicture)
-	http.HandleFunc("/pictureSize", getPictureSize)
-	http.HandleFunc("/pictureSize/", getPictureSize)
-	http.HandleFunc("/key", getPrivKey)
-	http.HandleFunc("/key/", getPrivKey)
-	http.HandleFunc("/pubKey", getPubKey)
-	http.HandleFunc("/pubKey/", getPubKey)
-	http.Handle("/device", mainDeviceHandler)
-	http.Handle("/device/", mainDeviceHandler)
-	http.HandleFunc("/password", postPassword)
-	http.HandleFunc("/password/", postPassword)
-	http.HandleFunc("/push", postPushLink)
-	http.HandleFunc("/push/", postPushLink)
-	http.HandleFunc("/salt", requestSalt)
-	http.HandleFunc("/salt/", requestSalt)
-	http.HandleFunc("/requestAccess", requestAccess)
-	http.HandleFunc("/requestAccess/", requestAccess)
-	http.HandleFunc("/version", getVersion)
-	http.HandleFunc("/version/", getVersion)
+	apiV1Mux := http.NewServeMux()
+	apiV1Mux.HandleFunc("/command", mainCommand)
+	apiV1Mux.HandleFunc("/command/", mainCommand)
+	//Disabled Feature: CommandLogs
+	//apiV1Mux.HandleFunc("/commandLogs", getCommandLog)
+	//apiV1Mux.HandleFunc("/commandLogs/", getCommandLog)
+	apiV1Mux.HandleFunc("/location", mainLocation)
+	apiV1Mux.HandleFunc("/location/", mainLocation)
+	apiV1Mux.HandleFunc("/locations", getAllLocations)
+	apiV1Mux.HandleFunc("/locations/", getAllLocations)
+	apiV1Mux.HandleFunc("/locationDataSize", getLocationDataSize)
+	apiV1Mux.HandleFunc("/locationDataSize/", getLocationDataSize)
+	apiV1Mux.HandleFunc("/picture", mainPicture)
+	apiV1Mux.HandleFunc("/picture/", mainPicture)
+	apiV1Mux.HandleFunc("/pictures", getAllPictures)
+	apiV1Mux.HandleFunc("/pictures/", getAllPictures)
+	apiV1Mux.HandleFunc("/pictureSize", getPictureSize)
+	apiV1Mux.HandleFunc("/pictureSize/", getPictureSize)
+	apiV1Mux.HandleFunc("/key", getPrivKey)
+	apiV1Mux.HandleFunc("/key/", getPrivKey)
+	apiV1Mux.HandleFunc("/pubKey", getPubKey)
+	apiV1Mux.HandleFunc("/pubKey/", getPubKey)
+	apiV1Mux.Handle("/device", mainDeviceHandler)
+	apiV1Mux.Handle("/device/", mainDeviceHandler)
+	apiV1Mux.HandleFunc("/password", postPassword)
+	apiV1Mux.HandleFunc("/password/", postPassword)
+	apiV1Mux.HandleFunc("/push", mainPushUrl)
+	apiV1Mux.HandleFunc("/push/", mainPushUrl)
+	apiV1Mux.HandleFunc("/salt", requestSalt)
+	apiV1Mux.HandleFunc("/salt/", requestSalt)
+	apiV1Mux.HandleFunc("/requestAccess", requestAccess)
+	apiV1Mux.HandleFunc("/requestAccess/", requestAccess)
+	apiV1Mux.HandleFunc("/version", getVersion)
+	apiV1Mux.HandleFunc("/version/", getVersion)
 
-	if fileExists(filepath.Join(filesDir, SERVER_KEY)) {
+	// Uncomment this once the API v1 is no longer hosted at the root "/" (because we cannot have two "/" in muxFinal).
+	// Until then, as a side-effect, the static files are also served under /api/v1/.
+	// staticFilesMux := http.NewServeMux()
+	// staticFilesMux.Handle("/", http.FileServer(http.Dir(webDir)))
+	apiV1Mux.Handle("/", http.FileServer(http.Dir(webDir)))
+
+	muxFinal := http.NewServeMux()
+	// muxFinal.Handle("/", securityHeadersMiddleware(staticFilesMux))
+	muxFinal.Handle("/", securityHeadersMiddleware(apiV1Mux)) // deprecated
+	muxFinal.Handle("/api/v1/", http.StripPrefix("/api/v1", securityHeadersMiddleware(apiV1Mux)))
+
+	if fileExists(config.ServerCrt) && fileExists(config.ServerKey) {
 		securePort := ":" + strconv.Itoa(config.PortSecure)
-		err := http.ListenAndServeTLS(securePort, filepath.Join(filesDir, SERVER_CERT), filepath.Join(filesDir, SERVER_KEY), nil)
+		err := http.ListenAndServeTLS(securePort, config.ServerCrt, config.ServerKey, muxFinal)
 		if err != nil {
 			fmt.Println("HTTPS won't be available.", err)
 		}
 	}
 	insecureAddr := ":" + strconv.Itoa(config.PortInsecure)
-	log.Fatal(http.ListenAndServe(insecureAddr, nil))
+	log.Fatal(http.ListenAndServe(insecureAddr, muxFinal))
 }
 
 func load_config(filesDir string) config {
@@ -578,7 +729,7 @@ func load_config(filesDir string) config {
 
 	if !configRead {
 		fmt.Println("WARN: No config found! Using defaults.")
-		serverConfig = config{PortSecure: 8443, PortInsecure: 8080, UserIdLength: 4, MaxSavedLoc: 2147483647, MaxSavedPic: 10, RegistrationToken: "youlostthegame"}
+		serverConfig = config{PortSecure: 8443, PortInsecure: 8080, UserIdLength: 5, MaxSavedLoc: 1000, MaxSavedPic: 10, RegistrationToken: ""}
 	}
 	//fmt.Printf("INFO: Using config %+v\n", serverConfig)
 
@@ -589,7 +740,7 @@ func load_config(filesDir string) config {
 
 func init_db(filesDir string, config config) {
 	fmt.Println("Init: Loading database")
-	uio = user.UserIO{}
+	uio = user.UserRepository{}
 	uio.Init(filesDir, config.UserIdLength, config.MaxSavedLoc, config.MaxSavedPic)
 }
 
@@ -605,7 +756,7 @@ func get_cwd() string {
 
 func fileExists(filename string) bool {
 	info, err := os.Stat(filename)
-	if os.IsNotExist(err) {
+	if os.IsNotExist(err) || info == nil {
 		return false
 	}
 	return !info.IsDir()
@@ -625,5 +776,5 @@ func main() {
 	fmt.Println("FMD Server ", VERSION)
 	fmt.Println("Starting Server")
 	fmt.Printf("Port: %d (insecure) %d (secure)\n", config.PortInsecure, config.PortSecure)
-	handleRequests(filesDir, webDir, config)
+	handleRequests(webDir, config)
 }
