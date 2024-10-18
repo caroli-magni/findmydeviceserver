@@ -28,7 +28,6 @@ RUN apt update && apt install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /fmd /fmd/server
 COPY --from=builder /usr/lib/libobjectbox.so /usr/lib/libobjectbox.so
 
-COPY web /fmd/web
 COPY extra /fmd/extra
 
 # Old objectbox dir
@@ -42,6 +41,6 @@ USER fmd-user
 EXPOSE 8080/tcp
 EXPOSE 8443/tcp
 VOLUME /data
-
+VOLUME /web
 
 ENTRYPOINT ["/fmd/server"]
