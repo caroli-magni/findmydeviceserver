@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"path/filepath"
 	"strings"
+	"github.com/objectbox/objectbox-go/objectbox"
 )
 
 type UserIO struct {
