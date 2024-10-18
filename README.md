@@ -171,4 +171,3 @@ The community has developed implementations of FMD Server in other languages/fra
 ## License
 
 FMD Server is published under [GPLv3-or-later](LICENSE).
-
