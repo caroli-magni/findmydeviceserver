@@ -23,7 +23,6 @@
 
     <!--TODO: Remove these when removing the legacy crypto code -->
     <script src="crypto-js/crypto-js.js"></script>
-    <script src="jsencrypt/jsencrypt.min.js"></script>
 
     <script src="locate.js"></script>
     <script src="command.js"></script>
@@ -34,7 +33,7 @@
     <script src="node_modules/jszip/dist/jszip.min.js"></script>
 </head>
 
-<body>
+<body onbeforeunload="return disableForcePolling()">
 
     <h2 class="center-column">Find My Device</h2>
 
@@ -86,6 +85,16 @@
                     <button type="button" class="imageButton" title="Next Location" id="locateNewer">
                         <img src="assets/Right.png" height="24" />
                     </button>
+                    <input type="checkbox" id="forceLatest" name="forceLatest" value="forceLatest" checked>
+                            <label for="forcePolling">Force Latest Position</label>
+                        </button>
+                        <input type="checkbox" id="forcePolling" name="forcePolling" value="forcePolling">
+                            <label for="forcePolling">Force Polling</label>
+                        <form id="applyForcePollingRateForm">
+                            <label>Rate (10s-600s): <input type="number" id="forcePollingRate" name="forcePollingRate" min="10" max="600" maxlength="4" size="4">
+                            <label/>
+                            <button type="submit" title="Apply Force Polling Rate" id="applyForcePollingRate">Apply</button>
+                        </form>
                 </div>
 
                 <div>
@@ -175,7 +184,8 @@
                     <p id="dateView">Date</p>
                     <p id="timeView">Time</p>
                 </div>
-
+            </div>
+            <div class="column-right">
                 <div class="dropdown">
                     <button type="button" class="imageButton dropDownBtn" title="Locate" id="locate">
                         <img src="assets/Locate.png" height="24" id="locateDropDownButtonInner" />
