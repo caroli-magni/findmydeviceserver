@@ -1,7 +1,18 @@
+
+
 # FMD Server
 
-This is the official server for [FindMyDevice (FMD)](https://gitlab.com/Nulide/findmydevice)
+This is a fork of the official server for [FindMyDevice (FMD)](https://gitlab.com/Nulide/findmydevice)
 written in Go.
+
+The following changes have been made to Nulide's original project:
+ -  Removal of web session token expiration
+ -  Changed max stored location limit to maxuint, for personal use.
+ -  Added a "Poll GPS" toggle, with poll rate text input
+ -  Removed original buttons and added a Slider bar to scroll through the the location history
+ -  A force-latest location toggle on the web interface
+ -  Made the /web folder of the docker folder external using a volume mount
+   
 
 The FMD app can register an account on FMD Server.
 The app can then upload its location at regular intervals.
