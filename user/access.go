@@ -81,13 +81,13 @@ func (a *AccessController) CheckAccessToken(tokenToCheck string) (string, error)
 	for index, id := range a.accessTokens {
 		if id.Token == tokenToCheck {
 			tokenExpired := id.ExpirationTime < time.Now().Unix()
-			if tokenExpired {
-				a.accessTokens[index] = a.accessTokens[len(a.accessTokens)-1]
-				a.accessTokens = a.accessTokens[:len(a.accessTokens)-1]
-				return "", errors.New("token expired")
-			} else {
+			// if tokenExpired {
+			// 	a.accessTokens[index] = a.accessTokens[len(a.accessTokens)-1]
+			// 	a.accessTokens = a.accessTokens[:len(a.accessTokens)-1]
+			// 	return "", errors.New("token expired")
+			// } else {
 				return id.DeviceId, nil
-			}
+			//}
 		}
 	}
 	return "", errors.New("token not found")
