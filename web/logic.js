@@ -3,7 +3,7 @@ var map, markers;
 var newestLocationDataIndex = 0;
 var currentLocationDataIndx = 0;
 var requestedIndex = 0;
-var forceLatest = 1;
+var forceLatest = 0;
 var forcePollingRateValue = 20000;
 var locCache = new Map();
 
