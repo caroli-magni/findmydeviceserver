@@ -1,7 +1,10 @@
 var map, markers;
 
-var newestLocationDataIndex;
+var newestLocationDataIndex = 0;
 var currentLocationDataIndx = 0;
+var requestedIndex = 0;
+var forceLatest = 1;
+var forcePollingRateValue = 20000;
 var locCache = new Map();
 
 var currentId;
@@ -19,6 +22,23 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+//var getGps = setInterval(function() {sendToPhone("locate gps");}, forcePollingRateValue);
+
+function disableForcePolling(){
+    clearInterval(getGps);
+}
+function applyForcePollingRate(){
+    forcePollingRateValue=document.getElementById("forcePollingRate").value*1000;
+    var toasted = new Toasted({
+    position: 'top-center',
+    duration: 2000
+    });
+    if(document.getElementById("forcePolling").checked){
+        toasted.show("".concat(forcePollingRateValue/1000, "s Polling rate applied!"));
+    }else{
+        toasted.show("".concat(forcePollingRateValue/1000, "s Polling rate applied! Remember to enable!"));
+    }
+}
 window.addEventListener("load", (event) => init());
 
 window.onclick = function (event) {
@@ -84,8 +104,69 @@ function setupOnClicks() {
         return false;
     });
 
-    document.getElementById("locateOlder").addEventListener("click", async () => await locateOlder());
-    document.getElementById("locateNewer").addEventListener("click", async () => await locateNewer());
+        document.getElementById("locateOlder").addEventListener("click", function() {
+        if(!document.getElementById('forceLatest').checked){
+            locateOlder();
+        }else{
+            var toasted = new Toasted({
+                position: 'top-center',
+                duration: 2000
+        });
+        toasted.show("Disable Force Latest Position to scrub through history!");
+        }
+    });
+    document.getElementById("locateNewer").addEventListener("click", function() {
+        if(!document.getElementById('forceLatest').checked){
+            locateNewer();
+        }
+        else{
+                var toasted = new Toasted({
+                position: 'top-center',
+                duration: 2000
+        });
+        toasted.show("Force Latest Position is already on, timetraveller!");
+        }
+    });
+    var forcePollingCheckbox = document.querySelector("input[name=forcePolling]");
+    forcePollingCheckbox.addEventListener('change', function() {
+    if (this.checked) {
+        var getGps = setInterval(function() {sendToPhone("locate gps");}, forcePollingRateValue);
+        var toasted = new Toasted({
+            position: 'top-center',
+            duration: 2000
+        });
+        document.getElementById("forcePollingRate").value = forcePollingRateValue/1000;
+        toasted.show("".concat("Force polling every ",forcePollingRateValue/1000, "s enabled!"));
+    } else {
+        clearInterval(getGps);
+        var toasted = new Toasted({
+            position: 'top-center',
+            duration: 2000
+        });
+        toasted.show('Force polling disabled!');
+      }
+    });
+    document.getElementById("forcePollingRate").value = forcePollingRateValue/1000;
+    var getLatest = setInterval(function() {currentLocationDataIndx=newestLocationDataIndex;locate(currentLocationDataIndx);}, 200);
+    var forceLatestCheckbox = document.querySelector("input[name=forceLatest]");
+    forceLatestCheckbox.addEventListener('change', function() {
+    if (this.checked) {
+        getLatest = setInterval(function() {currentLocationDataIndx=newestLocationDataIndex;locate(currentLocationDataIndx);}, 200);
+        var toasted = new Toasted({
+            position: 'top-center',
+            duration: 2000
+        });
+        toasted.show('Force latest position enabled!');
+    } else {
+        clearInterval(getLatest);
+        var toasted = new Toasted({
+            position: 'top-center',
+            duration: 2000
+        });
+        toasted.show('Force latest position disabled!');
+      }
+    });
+    document.getElementById("applyForcePollingRateForm").addEventListener("submit", function(e) {applyForcePollingRate();e.preventDefault();});
     document.getElementById("locate").addEventListener("click", () => showLocateDropDown());
     document.getElementById("locateAll").addEventListener("click", () => sendToPhone("locate"));
     document.getElementById("locateGps").addEventListener("click", () => sendToPhone("locate gps"));
@@ -461,7 +542,7 @@ async function sendToPhone(message) {
         position: 'top-center',
         duration: 2000
     });
-    toasted.show('Command send!');
+    toasted.show('Polling GPS...');
 }
 
 async function showCommandLogs() {
